@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Battle State Visualizer</title>
+    
+    <!-- Load CSS files -->
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/components/animations.css">
+    <link rel="stylesheet" href="css/components/toolbar.css">
+    <link rel="stylesheet" href="css/components/pokemon-card.css">
+    <link rel="stylesheet" href="css/components/canvas.css">
+    <link rel="stylesheet" href="css/components/modal.css">
+</head>
+<body>
+    <!-- Background Animation -->
+    <div class="bg-animation">
+        <div class="floating-orb" style="width: 300px; height: 300px; top: 10%; left: 10%;"></div>
+        <div class="floating-orb" style="width: 200px; height: 200px; top: 60%; right: 20%; animation-delay: -10s;"></div>
+        <div class="floating-orb" style="width: 400px; height: 400px; bottom: 10%; left: 50%; animation-delay: -5s;"></div>
+    </div>
+
+    <!-- App Title -->
+    <div class="app-title">
+        <h1>Pokemon Battle Visualizer</h1>
+        <p>Visualize game states and strategies</p>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="tool-group">
+            <button class="tool-btn active" id="drawTool" title="Draw">✏️</button>
+            <button class="tool-btn" id="eraseTool" title="Eraser">🧽</button>
+            <button class="tool-btn" id="pokemonTool" title="Add Pokemon Card">🎴</button>
+        </div>
+        
+        <div class="tool-group">
+            <input type="color" class="color-picker" id="colorPicker" value="#ffffff" title="Color">
+        </div>
+        
+        <div class="tool-group">
+            <span class="size-display" id="sizeDisplay">5px</span>
+            <input type="range" class="size-slider" id="sizeSlider" min="1" max="50" value="5" title="Brush Size">
+        </div>
+        
+        <div class="tool-group">
+            <button class="tool-btn" id="clearBtn" title="Clear Canvas">🗑️</button>
+            <button class="tool-btn" id="undoBtn" title="Undo">↶</button>
+            <button class="tool-btn" id="redoBtn" title="Redo">↷</button>
+        </div>
+    </div>
+
+    <!-- Canvas Container -->
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="statusBar">
+        Ready to draw
+    </div>
+
+    <!-- Load JavaScript modules -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

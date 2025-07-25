@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Battle State Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+
+        /* Animated background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            z-index: -2;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(147, 51, 234, 0.1), transparent, rgba(59, 130, 246, 0.1), transparent);
+            animation: gradient-shift 20s linear infinite;
+        }
+
+        @keyframes gradient-shift {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        .floating-orb {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(147, 51, 234, 0.3), transparent);
+            animation: float 20s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(100px, -100px) scale(1.2); }
+            66% { transform: translate(-100px, 50px) scale(0.8); }
+        }
+
+        .toolbar {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .tool-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            padding-right: 10px;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .tool-group:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+
+        .tool-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            font-size: 16px;
+            color: white;
+        }
+
+        .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .tool-btn.active {
+            background: rgba(147, 51, 234, 0.8);
+            color: white;
+        }
+
+        .color-picker {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #000;
+        }
+
+        .size-slider {
+            width: 100px;
+            margin: 0 10px;
+        }
+
+        .size-display {
+            font-size: 12px;
+            color: #ccc;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .canvas-container {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .status-bar {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+
+        /* Pokemon Card Styles */
+        .pokemon-card {
+            position: absolute;
+            width: 320px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%);
+            border: 2px solid rgba(147, 51, 234, 0.5);
+            border-radius: 12px;
+            padding: 20px;
+            padding-left: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(147, 51, 234, 0.2);
+            cursor: move;
+            z-index: 100;
+            transition: all 0.3s ease;
+            user-select: none;
+            color: white;
+        }
+
+        .pokemon-card.expanded {
+            width: 415px;
+            padding-left: 20px;
+        }
+
+        .pokemon-card-content {
+            display: flex;
+            gap: 15px;
+            position: relative;
+        }
+
+        .stats-panel {
+            width: 0;
+            overflow: hidden;
+            transition: width 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .pokemon-card.expanded .stats-panel {
+            width: 80px;
+        }
+
+        .stats-content {
+            width: 80px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+            margin-top: 20px;
+        }
+
+        .stats-content::before {
+            content: 'Base Stats';
+            position: absolute;
+            top: -18px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            transition: all 0.2s ease;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .stats-content:hover::before {
+            content: 'Final Stats';
+            color: #10b981;
+        }
+
+        .stats-toggle {
+            position: absolute;
+            left: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 40px;
+            background: rgba(147, 51, 234, 0.8);
+            border-radius: 0 8px 8px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            z-index: 10;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .stats-toggle:hover {
+            background: rgba(147, 51, 234, 1);
+            width: 24px;
+        }
+
+        .stats-toggle span {
+            font-size: 12px;
+            color: white;
+        }
+
+        .stat-item {
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            transition: opacity 0.2s ease;
+        }
+
+        .stat-value.base {
+            display: block;
+        }
+
+        .stat-value.final {
+            display: none;
+            color: #10b981;
+        }
+
+        .stats-content:hover .stat-value.base {
+            display: none;
+        }
+
+        .stats-content:hover .stat-value.final {
+            display: block;
+        }
+
+        .stats-title {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .stat-bar {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            margin-top: 2px;
+            overflow: hidden;
+        }
+
+        .stat-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+            transition: width 0.3s ease;
+        }
+
+        .stat-bar-fill.final-bar {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+
+        .stats-content:hover .stat-bar-fill.base-bar {
+            display: none;
+        }
+
+        .stats-content:hover .stat-bar-fill.final-bar {
+            display: block;
+        }
+
+        .main-card-content {
+            flex: 1;
+        }
+
+        .pokemon-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 60px rgba(147, 51, 234, 0.3);
+        }
+
+        .pokemon-card.dragging {
+            transform: rotate(3deg) scale(1.02);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.7), 0 0 80px rgba(147, 51, 234, 0.4);
+            z-index: 1001;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .card-title-section {
+            flex: 1;
+        }
+
+        .pokemon-name {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .pokemon-nickname {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            font-style: italic;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .card-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            color: white;
+            font-size: 14px;
+        }
+
+        .card-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .card-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .info-left {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .info-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .info-right {
+            text-align: right;
+        }
+
+        .type-badges {
+            display: flex;
+            gap: 4px;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+
+        .type-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+
+        .type-badge span {
+            line-height: 1;
+        }
+
+        .type-badge svg {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .tera-type {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            justify-content: flex-end;
+            margin-top: 4px;
+        }
+
+        .sprite-container {
+            width: 96px;
+            height: 96px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sprite-container img {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .sprite-placeholder {
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 40px;
+        }
+
+        .moves-section {
+            margin-bottom: 15px;
+        }
+
+        .moves-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .move-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .move-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .hp-section {
+            margin-top: 15px;
+        }
+
+        .hp-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .hp-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+            transition: width 0.3s ease;
+        }
+
+        /* Import Modal */
+        .import-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            backdrop-filter: blur(5px);
+        }
+
+        .import-content {
+            background: #1a1a2e;
+            border: 1px solid rgba(147, 51, 234, 0.5);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .import-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .import-textarea {
+            width: 100%;
+            height: 250px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            color: white;
+            font-family: monospace;
+            font-size: 13px;
+            resize: none;
+        }
+
+        .import-textarea:focus {
+            outline: none;
+            border-color: rgba(147, 51, 234, 0.8);
+        }
+
+        .import-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .import-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .import-btn.primary {
+            background: rgba(147, 51, 234, 0.8);
+            color: white;
+        }
+
+        .import-btn.primary:hover {
+            background: rgba(147, 51, 234, 1);
+        }
+
+        .import-btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .import-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation">
+        <div class="floating-orb" style="width: 300px; height: 300px; top: 10%; left: 10%;"></div>
+        <div class="floating-orb" style="width: 200px; height: 200px; top: 60%; right: 20%; animation-delay: -10s;"></div>
+        <div class="floating-orb" style="width: 400px; height: 400px; bottom: 10%; left: 50%; animation-delay: -5s;"></div>
+    </div>
+
+    <div style="position: fixed; top: 20px; right: 20px; z-index: 1000; text-align: right;">
+        <h1 style="margin: 0; color: white; font-size: 24px; font-weight: bold; text-shadow: 0 2px 10px rgba(0,0,0,0.5);">Pokemon Battle Visualizer</h1>
+        <p style="margin: 5px 0 0 0; color: rgba(255,255,255,0.7); font-size: 14px;">Visualize game states and strategies</p>
+    </div>
+
+    <div class="toolbar">
+        <div class="tool-group">
+            <button class="tool-btn active" id="drawTool" title="Draw">✏️</button>
+            <button class="tool-btn" id="eraseTool" title="Eraser">🧽</button>
+            <button class="tool-btn" id="pokemonTool" title="Add Pokemon Card">🎴</button>
+        </div>
+        
+        <div class="tool-group">
+            <input type="color" class="color-picker" id="colorPicker" value="#ffffff" title="Color">
+        </div>
+        
+        <div class="tool-group">
+            <span class="size-display" id="sizeDisplay">5px</span>
+            <input type="range" class="size-slider" id="sizeSlider" min="1" max="50" value="5" title="Brush Size">
+        </div>
+        
+        <div class="tool-group">
+            <button class="tool-btn" id="clearBtn" title="Clear Canvas">🗑️</button>
+            <button class="tool-btn" id="undoBtn" title="Undo">↶</button>
+            <button class="tool-btn" id="redoBtn" title="Redo">↷</button>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+        Ready to draw
+    </div>
+
+    <script>
+        class PokemonWhiteboard {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.isDrawing = false;
+                this.currentTool = 'draw';
+                this.brushSize = 5;
+                this.brushColor = '#ffffff';
+                this.lastX = 0;
+                this.lastY = 0;
+                
+                // History for undo/redo
+                this.history = [];
+                this.historyStep = -1;
+                
+                // Pokemon card system
+                this.pokemonCards = [];
+                this.cardCounter = 0;
+                this.draggedCard = null;
+                this.dragOffset = { x: 0, y: 0 };
+                
+                // Type data with icons and unicode fallbacks
+                this.typeData = {
+                    'normal': { color: '#A8A878', icon: '⭐', unicode: '⭐' },
+                    'fire': { color: '#F08030', icon: '🔥', unicode: '🔥' },
+                    'water': { color: '#6890F0', icon: '💧', unicode: '💧' },
+                    'electric': { color: '#F8D030', icon: '⚡', unicode: '⚡' },
+                    'grass': { color: '#78C850', icon: '🌿', unicode: '🌿' },
+                    'ice': { color: '#98D8D8', icon: '❄️', unicode: '❄️' },
+                    'fighting': { color: '#C03028', icon: '👊', unicode: '👊' },
+                    'poison': { color: '#A040A0', icon: '☠️', unicode: '☠️' },
+                    'ground': { color: '#E0C068', icon: '⛰️', unicode: '⛰️' },
+                    'flying': { color: '#A890F0', icon: '🕊️', unicode: '🕊️' },
+                    'psychic': { color: '#F85888', icon: '🔮', unicode: '🔮' },
+                    'bug': { color: '#A8B820', icon: '🐛', unicode: '🐛' },
+                    'rock': { color: '#B8A038', icon: '🪨', unicode: '🪨' },
+                    'ghost': { color: '#705898', icon: '👻', unicode: '👻' },
+                    'dragon': { color: '#7038F8', icon: '🐲', unicode: '🐲' },
+                    'dark': { color: '#705848', icon: '🌙', unicode: '🌙' },
+                    'steel': { color: '#B8B8D0', icon: '⚙️', unicode: '⚙️' },
+                    'fairy': { color: '#EE99AC', icon: '✨', unicode: '✨' }
+                };
+                
+                // Configuration option for icon type
+                this.useUnicodeIcons = true; // Set to false to use SVG icons when available
+                
+                this.initCanvas();
+                this.bindEvents();
+                this.saveState();
+            }
+
+            // Placeholder function for stat calculations
+            calculateFinalStats(pokemon) {
+                // This is a placeholder function - replace with actual stat calculation logic
+                // Formula: ((2 * base + IV + EV/4) * level / 100 + 5) * nature * stages
+                
+                const baseStats = this.getBaseStats(pokemon.species);
+                const finalStats = {};
+                
+                // Placeholder calculations - modify these formulas as needed
+                const stats = ['HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe'];
+                stats.forEach(stat => {
+                    const base = baseStats[stat] || 100;
+                    const iv = 31; // Placeholder IV
+                    const ev = pokemon.evs?.[stat] || 0;
+                    const level = pokemon.level || 50;
+                    
+                    if (stat === 'HP') {
+                        // HP has a different formula
+                        finalStats[stat] = Math.floor(((2 * base + iv + ev/4) * level / 100) + level + 10);
+                    } else {
+                        // Other stats
+                        let value = Math.floor(((2 * base + iv + ev/4) * level / 100) + 5);
+                        
+                        // Apply nature modifier (placeholder - implement actual nature effects)
+                        const natureModifiers = {
+                            'adamant': { boost: 'Atk', lower: 'SpA' },
+                            'bold': { boost: 'Def', lower: 'Atk' },
+                            'brave': { boost: 'Atk', lower: 'Spe' },
+                            'calm': { boost: 'SpD', lower: 'Atk' },
+                            'careful': { boost: 'SpD', lower: 'SpA' },
+                            'gentle': { boost: 'SpD', lower: 'Def' },
+                            'hasty': { boost: 'Spe', lower: 'Def' },
+                            'impish': { boost: 'Def', lower: 'SpA' },
+                            'jolly': { boost: 'Spe', lower: 'SpA' },
+                            'lax': { boost: 'Def', lower: 'SpD' },
+                            'lonely': { boost: 'Atk', lower: 'Def' },
+                            'mild': { boost: 'SpA', lower: 'Def' },
+                            'modest': { boost: 'SpA', lower: 'Atk' },
+                            'naive': { boost: 'Spe', lower: 'SpD' },
+                            'naughty': { boost: 'Atk', lower: 'SpD' },
+                            'quiet': { boost: 'SpA', lower: 'Spe' },
+                            'rash': { boost: 'SpA', lower: 'SpD' },
+                            'relaxed': { boost: 'Def', lower: 'Spe' },
+                            'sassy': { boost: 'SpD', lower: 'Spe' },
+                            'timid': { boost: 'Spe', lower: 'Atk' }
+                        };
+                        
+                        const natureLower = pokemon.nature?.toLowerCase();
+                        const natureData = natureModifiers[natureLower];
+                        
+                        if (natureData) {
+                            if (stat === natureData.boost) {
+                                value = Math.floor(value * 1.1);
+                            } else if (stat === natureData.lower) {
+                                value = Math.floor(value * 0.9);
+                            }
+                        }
+                        
+                        finalStats[stat] = value;
+                    }
+                });
+                
+                return finalStats;
+            }
+
+            // Get base stats for a Pokemon (placeholder data)
+            getBaseStats(species) {
+                // Placeholder base stats - replace with actual Pokemon base stats
+                const baseStatsData = {
+                    'pikachu': { HP: 35, Atk: 55, Def: 40, SpA: 50, SpD: 50, Spe: 90 },
+                    'charizard': { HP: 78, Atk: 84, Def: 78, SpA: 109, SpD: 85, Spe: 100 },
+                    'blastoise': { HP: 79, Atk: 83, Def: 100, SpA: 85, SpD: 105, Spe: 78 },
+                    'venusaur': { HP: 80, Atk: 82, Def: 83, SpA: 100, SpD: 100, Spe: 80 },
+                    'garchomp': { HP: 108, Atk: 130, Def: 95, SpA: 80, SpD: 85, Spe: 102 },
+                    'incineroar': { HP: 95, Atk: 115, Def: 90, SpA: 80, SpD: 90, Spe: 60 },
+                    'amoonguss': { HP: 114, Atk: 85, Def: 70, SpA: 85, SpD: 80, Spe: 30 },
+                    'rillaboom': { HP: 100, Atk: 125, Def: 90, SpA: 60, SpD: 70, Spe: 85 },
+                    'dragapult': { HP: 88, Atk: 120, Def: 75, SpA: 100, SpD: 75, Spe: 142 },
+                    'corviknight': { HP: 98, Atk: 87, Def: 105, SpA: 53, SpD: 85, Spe: 67 },
+                    'toxapex': { HP: 50, Atk: 63, Def: 152, SpA: 53, SpD: 142, Spe: 35 },
+                    'landorus': { HP: 89, Atk: 125, Def: 90, SpA: 115, SpD: 80, Spe: 101 },
+                    'landorus-therian': { HP: 89, Atk: 145, Def: 90, SpA: 105, SpD: 80, Spe: 91 },
+                    'regieleki': { HP: 80, Atk: 100, Def: 50, SpA: 100, SpD: 50, Spe: 200 },
+                    'urshifu': { HP: 100, Atk: 130, Def: 100, SpA: 63, SpD: 60, Spe: 97 },
+                    'zacian': { HP: 92, Atk: 130, Def: 115, SpA: 80, SpD: 115, Spe: 138 },
+                    'zacian-crowned': { HP: 92, Atk: 170, Def: 115, SpA: 80, SpD: 115, Spe: 148 },
+                    'calyrex-ice': { HP: 100, Atk: 165, Def: 150, SpA: 85, SpD: 130, Spe: 50 },
+                    'calyrex-shadow': { HP: 100, Atk: 85, Def: 80, SpA: 165, SpD: 100, Spe: 150 },
+                    'rotom-heat': { HP: 50, Atk: 65, Def: 107, SpA: 105, SpD: 107, Spe: 86 },
+                    'whimsicott': { HP: 60, Atk: 67, Def: 85, SpA: 77, SpD: 75, Spe: 116 },
+                    'togekiss': { HP: 85, Atk: 50, Def: 95, SpA: 120, SpD: 115, Spe: 80 },
+                    'porygon2': { HP: 85, Atk: 80, Def: 90, SpA: 105, SpD: 95, Spe: 60 },
+                    'gastrodon': { HP: 111, Atk: 83, Def: 68, SpA: 92, SpD: 82, Spe: 39 },
+                    'dusclops': { HP: 40, Atk: 70, Def: 130, SpA: 60, SpD: 130, Spe: 25 },
+                    'grimmsnarl': { HP: 95, Atk: 120, Def: 65, SpA: 95, SpD: 75, Spe: 60 }
+                };
+                
+                const speciesLower = species.toLowerCase();
+                return baseStatsData[speciesLower] || {
+                    HP: 80, Atk: 80, Def: 80, SpA: 80, SpD: 80, Spe: 80
+                };
+            }
+
+            initCanvas() {
+                this.resizeCanvas();
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.globalCompositeOperation = 'source-over';
+                window.addEventListener('resize', () => this.resizeCanvas());
+                
+                // Check if running from file:// protocol
+                if (window.location.protocol === 'file:') {
+                    console.warn('Running from local file system. Pokemon sprites may not load due to CORS restrictions.');
+                    console.log('To fix this, either:');
+                    console.log('1. Host the file on a web server (even a local one)');
+                    console.log('2. Use a browser with disabled CORS for development');
+                    console.log('3. The app will use fallback Pokemon data');
+                }
+                
+                // Add method to toggle icon type
+                window.toggleTypeIcons = () => {
+                    this.useUnicodeIcons = !this.useUnicodeIcons;
+                    console.log(`Switched to ${this.useUnicodeIcons ? 'Unicode' : 'SVG'} icons`);
+                    // Re-render all cards
+                    this.pokemonCards.forEach(card => {
+                        if (card.pokemon) {
+                            this.updatePokemonCard(card.id, card.pokemon);
+                        }
+                    });
+                };
+                
+                console.log('Pokemon Battle Visualizer loaded.');
+                console.log('Using Unicode icons by default. Run toggleTypeIcons() in console to switch to SVG.');
+                console.log('Stat calculations are placeholders - modify calculateFinalStats() for accurate calculations.');
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.strokeStyle = this.brushColor;
+                this.ctx.lineWidth = this.brushSize;
+                this.ctx.globalCompositeOperation = this.currentTool === 'erase' ? 'destination-out' : 'source-over';
+            }
+
+            bindEvents() {
+                // Tool selection
+                document.getElementById('drawTool').addEventListener('click', () => this.setTool('draw'));
+                document.getElementById('eraseTool').addEventListener('click', () => this.setTool('erase'));
+                document.getElementById('pokemonTool').addEventListener('click', () => this.setTool('pokemon'));
+                
+                // Controls
+                document.getElementById('colorPicker').addEventListener('change', (e) => this.setBrushColor(e.target.value));
+                document.getElementById('sizeSlider').addEventListener('input', (e) => this.setBrushSize(e.target.value));
+                document.getElementById('clearBtn').addEventListener('click', () => this.clearCanvas());
+                document.getElementById('undoBtn').addEventListener('click', () => this.undo());
+                document.getElementById('redoBtn').addEventListener('click', () => this.redo());
+                
+                // Canvas events
+                this.canvas.addEventListener('mousedown', (e) => this.handleCanvasMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+                this.canvas.addEventListener('mouseup', () => this.handleCanvasMouseUp());
+                this.canvas.addEventListener('mouseout', () => this.handleCanvasMouseUp());
+                
+                // Touch events
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousedown', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+                
+                this.canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousemove', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+                
+                this.canvas.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    const mouseEvent = new MouseEvent('mouseup', {});
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+
+                // Global events for dragging
+                document.addEventListener('mousemove', (e) => this.handleGlobalMouseMove(e));
+                document.addEventListener('mouseup', () => this.handleGlobalMouseUp());
+            }
+
+            setTool(tool) {
+                this.currentTool = tool;
+                
+                document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+                if (tool === 'pokemon') {
+                    document.getElementById('pokemonTool').classList.add('active');
+                } else {
+                    document.getElementById(tool + 'Tool').classList.add('active');
+                }
+                
+                if (tool === 'erase') {
+                    this.ctx.globalCompositeOperation = 'destination-out';
+                    this.canvas.style.cursor = 'grab';
+                } else {
+                    this.ctx.globalCompositeOperation = 'source-over';
+                    this.canvas.style.cursor = 'crosshair';
+                }
+                
+                const toolNames = { draw: 'Drawing', erase: 'Erasing', pokemon: 'Pokemon card placement' };
+                this.updateStatus(`${toolNames[tool]} mode activated`);
+            }
+
+            handleCanvasMouseDown(e) {
+                if (this.currentTool === 'pokemon') {
+                    this.createPokemonCard(e);
+                } else {
+                    this.startDrawing(e);
+                }
+            }
+
+            handleCanvasMouseMove(e) {
+                if (this.currentTool !== 'pokemon') {
+                    this.draw(e);
+                }
+            }
+
+            handleCanvasMouseUp() {
+                if (this.currentTool !== 'pokemon') {
+                    this.stopDrawing();
+                }
+            }
+
+            handleGlobalMouseMove(e) {
+                if (this.draggedCard) {
+                    const x = e.clientX - this.dragOffset.x;
+                    const y = e.clientY - this.dragOffset.y;
+                    this.draggedCard.style.left = x + 'px';
+                    this.draggedCard.style.top = y + 'px';
+                }
+            }
+
+            handleGlobalMouseUp() {
+                if (this.draggedCard) {
+                    this.draggedCard.classList.remove('dragging');
+                    this.draggedCard = null;
+                }
+            }
+
+            setBrushColor(color) {
+                this.brushColor = color;
+                this.ctx.strokeStyle = color;
+                this.updateStatus(`Color changed to ${color}`);
+            }
+
+            setBrushSize(size) {
+                this.brushSize = size;
+                this.ctx.lineWidth = size;
+                document.getElementById('sizeDisplay').textContent = size + 'px';
+                this.updateStatus(`Brush size: ${size}px`);
+            }
+
+            startDrawing(e) {
+                this.isDrawing = true;
+                const rect = this.canvas.getBoundingClientRect();
+                this.lastX = e.clientX - rect.left;
+                this.lastY = e.clientY - rect.top;
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.lastX, this.lastY);
+            }
+
+            draw(e) {
+                if (!this.isDrawing) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+                
+                this.ctx.strokeStyle = this.currentTool === 'erase' ? '#000000' : this.brushColor;
+                this.ctx.lineWidth = this.brushSize;
+                
+                this.ctx.lineTo(currentX, currentY);
+                this.ctx.stroke();
+                
+                this.lastX = currentX;
+                this.lastY = currentY;
+            }
+
+            stopDrawing() {
+                if (!this.isDrawing) return;
+                this.isDrawing = false;
+                this.ctx.beginPath();
+                this.saveState();
+            }
+
+            // Pokemon card methods
+            createPokemonCard(e) {
+                this.cardCounter++;
+                const cardId = `pokemon-card-${this.cardCounter}`;
+                
+                const cardElement = document.createElement('div');
+                cardElement.className = 'pokemon-card';
+                cardElement.id = cardId;
+                cardElement.style.left = (e.clientX - 160) + 'px';
+                cardElement.style.top = (e.clientY - 100) + 'px';
+                
+                cardElement.innerHTML = this.getEmptyCardHTML();
+                
+                document.body.appendChild(cardElement);
+                
+                // Bind events
+                const importBtn = cardElement.querySelector('.import-btn');
+                const closeBtn = cardElement.querySelector('.close-btn');
+                
+                importBtn.addEventListener('click', () => this.showImportModal(cardId));
+                closeBtn.addEventListener('click', () => this.removePokemonCard(cardId));
+                cardElement.addEventListener('mousedown', (e) => this.startCardDrag(e, cardElement));
+                
+                const cardData = {
+                    id: cardId,
+                    element: cardElement,
+                    pokemon: null
+                };
+                
+                this.pokemonCards.push(cardData);
+                this.updateStatus(`Pokemon card ${this.cardCounter} created`);
+            }
+
+            getEmptyCardHTML() {
+                return `
+                    <div class="stats-toggle" style="display: none;">
+                        <span>▶</span>
+                    </div>
+                    
+                    <div class="pokemon-card-content">
+                        <div class="main-card-content">
+                            <div class="card-header">
+                                <div class="card-title-section">
+                                    <div class="pokemon-name">Empty Slot</div>
+                                    <div class="pokemon-nickname">Click import to add Pokemon</div>
+                                </div>
+                                <div class="card-actions">
+                                    <button class="card-btn import-btn" title="Import Pokemon">📥</button>
+                                    <button class="card-btn close-btn" title="Remove Card">✕</button>
+                                </div>
+                            </div>
+                            <div class="sprite-container">
+                                <div class="sprite-placeholder">🎴</div>
+                            </div>
+                            <div style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px;">
+                                Import a Pokemon using Pokepaste format
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            parsePokepaste(text) {
+                const lines = text.trim().split('\n').filter(line => line.trim());
+                
+                // Parse first line
+                const firstLine = lines[0];
+                const nicknameMatch = firstLine.match(/^([^(]+)?\s*\(([^)]+)\)/);
+                const genderMatch = firstLine.match(/\)\s*\(([MF])\)/);
+                const itemMatch = firstLine.match(/@\s*(.+)$/);
+                
+                const nickname = nicknameMatch ? nicknameMatch[1].trim() : '';
+                const species = nicknameMatch ? nicknameMatch[2].trim() : firstLine.split('@')[0].trim();
+                const gender = genderMatch ? genderMatch[1] : null;
+                const item = itemMatch ? itemMatch[1].trim() : 'None';
+                
+                // Parse other attributes
+                let ability = 'Unknown';
+                let level = 50;
+                let shiny = false;
+                let teraType = 'Normal';
+                let evs = {};
+                let nature = 'Hardy';
+                let moves = [];
+                
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    
+                    if (line.startsWith('Ability:')) {
+                        ability = line.replace('Ability:', '').trim();
+                    } else if (line.startsWith('Level:')) {
+                        level = parseInt(line.replace('Level:', '').trim());
+                    } else if (line.startsWith('Shiny:')) {
+                        shiny = line.includes('Yes');
+                    } else if (line.startsWith('Tera Type:')) {
+                        teraType = line.replace('Tera Type:', '').trim();
+                    } else if (line.startsWith('EVs:')) {
+                        const evString = line.replace('EVs:', '').trim();
+                        const evParts = evString.split('/');
+                        evParts.forEach(part => {
+                            const match = part.trim().match(/(\d+)\s*(\w+)/);
+                            if (match) {
+                                evs[match[2]] = parseInt(match[1]);
+                            }
+                        });
+                    } else if (line.includes('Nature')) {
+                        nature = line.replace('Nature', '').trim();
+                    } else if (line.startsWith('-')) {
+                        moves.push(line.substring(1).trim());
+                    }
+                }
+                
+                return {
+                    nickname,
+                    species,
+                    gender,
+                    item,
+                    ability,
+                    level,
+                    shiny,
+                    teraType,
+                    evs,
+                    nature,
+                    moves,
+                    types: ['Loading'],
+                    sprite: null,
+                    hp: { current: 100, max: 100 }
+                };
+            }
+
+            async fetchPokemonData(pokemonName) {
+                try {
+                    // Handle special forms and formatting
+                    let apiName = pokemonName.toLowerCase();
+                    
+                    // Handle specific forms
+                    const formMappings = {
+                        'rotom-heat': 'rotom-heat',
+                        'rotom-wash': 'rotom-wash',
+                        'rotom-frost': 'rotom-frost',
+                        'rotom-fan': 'rotom-fan',
+                        'rotom-mow': 'rotom-mow',
+                        'urshifu-rapid-strike': 'urshifu-rapid-strike',
+                        'urshifu-single-strike': 'urshifu',
+                        'calyrex-ice': 'calyrex-ice',
+                        'calyrex-shadow': 'calyrex-shadow',
+                        'landorus-therian': 'landorus-therian',
+                        'thundurus-therian': 'thundurus-therian',
+                        'tornadus-therian': 'tornadus-therian',
+                        'lycanroc-dusk': 'lycanroc-dusk',
+                        'zacian-crowned': 'zacian-crowned',
+                        'zamazenta-crowned': 'zamazenta-crowned'
+                    };
+                    
+                    // Check if there's a specific form mapping
+                    if (formMappings[apiName]) {
+                        apiName = formMappings[apiName];
+                    } else {
+                        // General formatting: replace spaces and special characters
+                        apiName = apiName.replace(/[^a-z0-9-]/g, '-').replace(/--+/g, '-');
+                    }
+                    
+                    console.log('Fetching Pokemon:', apiName);
+                    
+                    // Get Pokemon ID from name for sprite URL
+                    const pokemonIds = {
+                        'bulbasaur': 1, 'ivysaur': 2, 'venusaur': 3, 'charmander': 4, 'charmeleon': 5, 'charizard': 6,
+                        'squirtle': 7, 'wartortle': 8, 'blastoise': 9, 'pikachu': 25, 'raichu': 26,
+                        'gengar': 94, 'gyarados': 130, 'lapras': 131, 'eevee': 133, 'snorlax': 143,
+                        'dragonite': 149, 'mewtwo': 150, 'mew': 151, 'typhlosion': 157, 'feraligatr': 160,
+                        'crobat': 169, 'ampharos': 181, 'espeon': 196, 'umbreon': 197, 'tyranitar': 248,
+                        'blaziken': 257, 'swampert': 260, 'gardevoir': 282, 'sableye': 302, 'aggron': 306,
+                        'flygon': 330, 'altaria': 334, 'salamence': 373, 'metagross': 376, 'latias': 380,
+                        'latios': 381, 'kyogre': 382, 'groudon': 383, 'rayquaza': 384, 'garchomp': 445,
+                        'lucario': 448, 'rotom': 479, 'rotom-heat': 479, 'rotom-wash': 479, 'rotom-frost': 479,
+                        'rotom-fan': 479, 'rotom-mow': 479, 'dialga': 483, 'palkia': 484, 'giratina': 487,
+                        'darkrai': 491, 'arceus': 493, 'serperior': 497, 'emboar': 500, 'samurott': 503,
+                        'excadrill': 530, 'conkeldurr': 534, 'seismitoad': 537, 'krookodile': 553, 'darmanitan': 555,
+                        'zoroark': 571, 'ferrothorn': 598, 'chandelure': 609, 'haxorus': 612, 'bisharp': 625,
+                        'hydreigon': 635, 'volcarona': 637, 'tornadus': 641, 'thundurus': 642, 'landorus': 645,
+                        'landorus-therian': 645, 'kyurem': 646, 'greninja': 658, 'talonflame': 663, 
+                        'aegislash': 681, 'goodra': 706, 'trevenant': 709, 'zygarde': 718, 'diancie': 719,
+                        'incineroar': 727, 'primarina': 730, 'decidueye': 724, 'lycanroc': 745, 'lycanroc-dusk': 745,
+                        'vikavolt': 738, 'toxapex': 748, 'araquanid': 752, 'tsareena': 763, 'mimikyu': 778,
+                        'tapu-koko': 785, 'tapu-lele': 786, 'tapu-bulu': 787, 'tapu-fini': 788,
+                        'solgaleo': 791, 'lunala': 792, 'kartana': 798, 'celesteela': 797, 'magearna': 801,
+                        'rillaboom': 812, 'cinderace': 815, 'inteleon': 818, 'corviknight': 823,
+                        'drednaw': 834, 'coalossal': 839, 'toxtricity': 849, 'grimmsnarl': 861,
+                        'hatterene': 858, 'dragapult': 887, 'zacian': 888, 'zacian-crowned': 888,
+                        'zamazenta': 889, 'zamazenta-crowned': 889, 'eternatus': 890,
+                        'urshifu': 892, 'urshifu-rapid-strike': 892, 'regieleki': 894, 'regidrago': 895,
+                        'glastrier': 896, 'spectrier': 897, 'calyrex': 898, 'calyrex-ice': 898, 'calyrex-shadow': 898,
+                        'amoonguss': 591, 'whimsicott': 547, 'togekiss': 468, 'porygon2': 233, 'dusclops': 356,
+                        'arcanine': 59, 'gastrodon': 423, 'clefairy': 35, 'gothitelle': 576, 'indeedee': 876,
+                        'pincurchin': 871, 'dracovish': 882, 'dracozolt': 880, 'comfey': 764, 'torkoal': 324
+                    };
+                    
+                    const pokemonId = pokemonIds[apiName];
+                    
+                    // Try to get sprite directly from GitHub
+                    let sprite = null;
+                    if (pokemonId) {
+                        sprite = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokemonId}.png`;
+                    }
+                    
+                    // Try to get type data from the API
+                    let types = this.getFallbackData(pokemonName).types;
+                    
+                    try {
+                        const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${apiName}`);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            types = data.types.map(t => t.type.name);
+                            
+                            // If we don't have a sprite yet, get it from the API response
+                            if (!sprite) {
+                                sprite = data.sprites.other['official-artwork'].front_default || 
+                                       data.sprites.front_default ||
+                                       data.sprites.other['home'].front_default;
+                            }
+                        }
+                    } catch (apiError) {
+                        console.log('API failed, using fallback types');
+                    }
+                    
+                    return {
+                        types: types,
+                        sprite: sprite || this.getFallbackData(pokemonName).sprite
+                    };
+                } catch (error) {
+                    console.error('Error in fetchPokemonData:', error);
+                    return this.getFallbackData(pokemonName);
+                }
+            }
+
+            getFallbackData(pokemonName) {
+                // Provide fallback data for common Pokemon
+                const fallbackTypes = {
+                    'pikachu': ['electric'],
+                    'charizard': ['fire', 'flying'],
+                    'blastoise': ['water'],
+                    'venusaur': ['grass', 'poison'],
+                    'gengar': ['ghost', 'poison'],
+                    'garchomp': ['dragon', 'ground'],
+                    'lucario': ['fighting', 'steel'],
+                    'rotom-heat': ['electric', 'fire'],
+                    'rotom-wash': ['electric', 'water'],
+                    'rotom-frost': ['electric', 'ice'],
+                    'rotom-mow': ['electric', 'grass'],
+                    'rotom-fan': ['electric', 'flying'],
+                    'amoonguss': ['grass', 'poison'],
+                    'incineroar': ['fire', 'dark'],
+                    'rillaboom': ['grass'],
+                    'dragapult': ['dragon', 'ghost'],
+                    'urshifu': ['fighting', 'dark'],
+                    'urshifu-rapid-strike': ['fighting', 'water'],
+                    'regieleki': ['electric'],
+                    'spectrier': ['ghost'],
+                    'glastrier': ['ice'],
+                    'calyrex': ['psychic', 'grass'],
+                    'calyrex-ice': ['psychic', 'ice'],
+                    'calyrex-shadow': ['psychic', 'ghost'],
+                    'zacian': ['fairy'],
+                    'zacian-crowned': ['fairy', 'steel'],
+                    'zamazenta': ['fighting'],
+                    'zamazenta-crowned': ['fighting', 'steel'],
+                    'eternatus': ['poison', 'dragon'],
+                    'corviknight': ['flying', 'steel'],
+                    'toxapex': ['poison', 'water'],
+                    'ferrothorn': ['grass', 'steel'],
+                    'landorus': ['ground', 'flying'],
+                    'landorus-therian': ['ground', 'flying'],
+                    'tapu-koko': ['electric', 'fairy'],
+                    'tapu-lele': ['psychic', 'fairy'],
+                    'tapu-bulu': ['grass', 'fairy'],
+                    'tapu-fini': ['water', 'fairy'],
+                    'whimsicott': ['grass', 'fairy'],
+                    'togekiss': ['fairy', 'flying'],
+                    'porygon2': ['normal'],
+                    'gastrodon': ['water', 'ground'],
+                    'dusclops': ['ghost'],
+                    'grimmsnarl': ['dark', 'fairy'],
+                    'hatterene': ['psychic', 'fairy'],
+                    'indeedee': ['psychic', 'normal'],
+                    'dracovish': ['water', 'dragon'],
+                    'torkoal': ['fire']
+                };
+                
+                const nameLower = pokemonName.toLowerCase();
+                const types = fallbackTypes[nameLower] || ['normal'];
+                
+                // Use a Pokemon silhouette as fallback sprite
+                const fallbackSprite = `data:image/svg+xml;base64,${btoa(`
+                    <svg width="96" height="96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="48" cy="48" r="40" fill="#333" opacity="0.3"/>
+                        <text x="48" y="54" text-anchor="middle" font-size="40" fill="#666">?</text>
+                    </svg>
+                `)}`;
+                
+                return {
+                    types: types,
+                    sprite: fallbackSprite
+                };
+            }
+
+            showImportModal(cardId) {
+                const modal = document.createElement('div');
+                modal.className = 'import-modal';
+                modal.innerHTML = `
+                    <div class="import-content">
+                        <h3 class="import-title">Import Pokemon (Pokepaste Format)</h3>
+                        <textarea class="import-textarea" placeholder="Paste your Pokemon data here...
+
+Example:
+steve (Pikachu) (M) @ Light Ball  
+Ability: Lightning Rod  
+Level: 50  
+Shiny: Yes  
+Tera Type: Rock  
+EVs: 140 HP / 84 Atk / 4 Def / 8 SpA / 140 SpD / 132 Spe  
+Timid Nature  
+- Fake Out  
+- Encore  
+- Thunder Shock  
+- Draining Kiss"></textarea>
+                        <div class="import-actions">
+                            <button class="import-btn secondary cancel-btn">Cancel</button>
+                            <button class="import-btn primary confirm-btn">Import</button>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 11px; color: rgba(255,255,255,0.6); text-align: center;">
+                            Note: If sprites don't load, the app will use fallback data.
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                const textarea = modal.querySelector('.import-textarea');
+                const confirmBtn = modal.querySelector('.confirm-btn');
+                const cancelBtn = modal.querySelector('.cancel-btn');
+                
+                confirmBtn.addEventListener('click', async () => {
+                    const pasteData = textarea.value.trim();
+                    if (pasteData) {
+                        const pokemon = this.parsePokepaste(pasteData);
+                        this.updatePokemonCard(cardId, pokemon);
+                        document.body.removeChild(modal);
+                        this.updateStatus('Importing Pokemon...');
+                        
+                        // Fetch Pokemon data from API
+                        const apiData = await this.fetchPokemonData(pokemon.species);
+                        pokemon.types = apiData.types;
+                        pokemon.sprite = apiData.sprite;
+                        this.updatePokemonCard(cardId, pokemon);
+                        
+                        if (apiData.sprite && !apiData.sprite.includes('data:image')) {
+                            this.updateStatus('Pokemon imported successfully');
+                        } else {
+                            this.updateStatus('Pokemon imported (using fallback data)');
+                        }
+                    }
+                });
+                
+                cancelBtn.addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+                
+                // Close on background click
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        document.body.removeChild(modal);
+                    }
+                });
+                
+                // Focus textarea
+                setTimeout(() => textarea.focus(), 100);
+            }
+
+            updatePokemonCard(cardId, pokemon) {
+                const card = this.pokemonCards.find(c => c.id === cardId);
+                if (!card) return;
+                
+                card.pokemon = pokemon;
+                card.element.innerHTML = this.getPokemonCardHTML(pokemon);
+                
+                // Re-bind events
+                const importBtn = card.element.querySelector('.import-btn');
+                const closeBtn = card.element.querySelector('.close-btn');
+                const statsToggle = card.element.querySelector('.stats-toggle');
+                
+                importBtn.addEventListener('click', () => this.showImportModal(cardId));
+                closeBtn.addEventListener('click', () => this.removePokemonCard(cardId));
+                
+                // Stats toggle functionality
+                statsToggle.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent card dragging
+                    card.element.classList.toggle('expanded');
+                    const arrow = statsToggle.querySelector('span');
+                    arrow.textContent = card.element.classList.contains('expanded') ? '◀' : '▶';
+                });
+            }
+
+            getTypeIconSVG(type) {
+                const typeData = this.typeData[type.toLowerCase()];
+                if (!typeData) return '';
+                
+                const color = typeData.color;
+                
+                // Create SVG type icons - return just the path/shape elements
+                const svgIcons = {
+                    'normal': `<circle cx="12" cy="12" r="8" fill="${color}"/>`,
+                    'fire': `<path d="M12 2 L8 10 L10 9 L7 16 L10 14 L8 22 C8 22 16 22 16 22 L14 14 L17 16 L14 9 L16 10 Z" fill="${color}"/>`,
+                    'water': `<path d="M12 2 Q6 8 6 14 Q6 20 12 20 Q18 20 18 14 Q18 8 12 2" fill="${color}"/>`,
+                    'electric': `<path d="M7 2 L5 12 L10 12 L8 22 L19 8 L13 8 L15 2 Z" fill="${color}"/>`,
+                    'grass': `<path d="M12 22 Q12 16 8 12 Q4 8 4 4 L12 12 L20 4 Q20 8 16 12 Q12 16 12 22" fill="${color}"/>`,
+                    'ice': `<path d="M12 2 L6 8 L6 16 L12 22 L18 16 L18 8 Z M12 8 L12 16 M8 10 L16 14 M8 14 L16 10" stroke="white" fill="${color}"/>`,
+                    'fighting': `<path d="M12 4 Q8 4 8 8 L8 14 Q8 18 12 18 Q16 18 16 14 L16 8 Q16 4 12 4 M10 8 L10 6 M14 8 L14 6" fill="${color}"/>`,
+                    'poison': `<circle cx="9" cy="14" r="6" fill="${color}"/><circle cx="15" cy="14" r="6" fill="${color}"/><circle cx="12" cy="8" r="5" fill="${color}"/>`,
+                    'ground': `<path d="M4 12 L12 4 L20 12 L20 20 L4 20 Z M8 12 L16 12" fill="${color}"/>`,
+                    'flying': `<path d="M12 20 Q6 16 4 12 Q6 12 8 10 Q10 8 12 8 Q14 8 16 10 Q18 12 20 12 Q18 16 12 20" fill="${color}"/>`,
+                    'psychic': `<path d="M12 2 C12 2 6 8 6 12 C6 16 8 18 12 18 C16 18 18 16 18 12 C18 8 12 2 12 2 M12 10 C10 10 10 12 10 12 C10 14 12 14 12 14 C14 14 14 12 14 12 C14 10 12 10 12 10" fill="${color}"/>`,
+                    'bug': `<circle cx="12" cy="10" r="6" fill="${color}"/><path d="M12 16 L8 20 M12 16 L16 20 M8 10 L4 6 M16 10 L20 6" stroke="${color}" stroke-width="2" fill="none"/>`,
+                    'rock': `<path d="M12 4 L8 8 L8 14 L12 20 L16 14 L16 8 Z" fill="${color}"/>`,
+                    'ghost': `<path d="M12 4 Q6 4 6 10 L6 18 L8 16 L10 18 L12 16 L14 18 L16 16 L18 18 L18 10 Q18 4 12 4 M9 10 Q9 9 10 9 Q11 9 11 10 Q11 11 10 11 Q9 11 9 10 M13 10 Q13 9 14 9 Q15 9 15 10 Q15 11 14 11 Q13 11 13 10" fill="${color}"/>`,
+                    'dragon': `<path d="M4 12 Q4 6 8 4 L10 6 Q12 4 14 6 L16 4 Q20 6 20 12 L18 16 Q16 18 12 18 Q8 18 6 16 Z M8 10 L8 8 M16 10 L16 8" fill="${color}"/>`,
+                    'dark': `<path d="M12 4 Q16 4 18 8 Q18 8 18 12 Q18 16 16 18 Q14 20 12 20 Q8 20 6 16 Q6 16 6 12 Q6 8 8 6 Q10 4 12 4 M10 10 Q10 8 12 8 Q14 8 14 10 Q14 12 12 12 Q10 12 10 10" fill="${color}"/>`,
+                    'steel': `<path d="M12 2 L4 10 L4 14 L12 22 L20 14 L20 10 Z M12 8 Q9 8 9 12 Q9 16 12 16 Q15 16 15 12 Q15 8 12 8" fill="${color}"/>`,
+                    'fairy': `<path d="M12 4 L10 8 L6 8 L9 11 L8 15 L12 13 L16 15 L15 11 L18 8 L14 8 Z" fill="${color}"/>`
+                };
+                
+                return svgIcons[type.toLowerCase()] || svgIcons['normal'];
+            }
+
+            getTypeIcon(type, useUnicode = null) {
+                const typeLower = type.toLowerCase();
+                const typeInfo = this.typeData[typeLower];
+                if (!typeInfo) return { html: '⭐', isUnicode: true };
+                
+                // Use unicode if explicitly requested or if globally set
+                const shouldUseUnicode = useUnicode !== null ? useUnicode : this.useUnicodeIcons;
+                
+                if (shouldUseUnicode) {
+                    return {
+                        html: `<span style="font-size: 14px;">${typeInfo.unicode}</span>`,
+                        isUnicode: true
+                    };
+                } else {
+                    // Return SVG icon
+                    const iconPath = this.getTypeIconSVG(typeLower);
+                    return {
+                        html: `<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                            ${iconPath}
+                        </svg>`,
+                        isUnicode: false
+                    };
+                }
+            }
+
+            getPokemonCardHTML(pokemon) {
+                // Get stats data
+                const baseStats = this.getBaseStats(pokemon.species);
+                const finalStats = this.calculateFinalStats(pokemon);
+                
+                // Create stats panel HTML
+                const statsHTML = ['HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe'].map(stat => {
+                    const base = baseStats[stat] || 0;
+                    const final = finalStats[stat] || 0;
+                    const maxStat = stat === 'HP' ? 714 : 658; // Max possible stats
+                    const basePercentage = (base / 255) * 100; // Base stats max at 255
+                    const finalPercentage = (final / maxStat) * 100;
+                    
+                    return `
+                        <div class="stat-item">
+                            <div class="stat-label">${stat}</div>
+                            <div class="stat-value base">${base}</div>
+                            <div class="stat-value final">${final}</div>
+                            <div class="stat-bar">
+                                <div class="stat-bar-fill base-bar" style="width: ${basePercentage}%"></div>
+                                <div class="stat-bar-fill final-bar" style="width: ${finalPercentage}%; display: none;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                // Create type badges with configurable icons
+                const typeHTML = pokemon.types.map(type => {
+                    const typeLower = type.toLowerCase();
+                    const typeColor = this.typeData[typeLower]?.color || '#A8A878';
+                    const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);
+                    const iconData = this.getTypeIcon(type);
+                    
+                    return `<div class="type-badge" style="background: ${typeColor};">
+                        ${iconData.html}
+                        <span style="display: inline-block; vertical-align: middle;">${typeCapitalized}</span>
+                    </div>`;
+                }).join('');
+                
+                const teraTypeLower = pokemon.teraType.toLowerCase();
+                const teraTypeColor = this.typeData[teraTypeLower]?.color || '#A8A878';
+                const teraIconData = this.getTypeIcon(pokemon.teraType);
+                
+                const movesHTML = pokemon.moves.map(move => 
+                    `<div class="move-item">${move}</div>`
+                ).join('');
+                
+                const hpPercent = (pokemon.hp.current / pokemon.hp.max) * 100;
+                
+                return `
+                    <div class="stats-toggle">
+                        <span>▶</span>
+                    </div>
+                    
+                    <div class="pokemon-card-content">
+                        <div class="stats-panel">
+                            <div class="stats-content" title="Hover to see final stats with EVs, IVs, and nature">
+                                ${statsHTML}
+                            </div>
+                        </div>
+                        
+                        <div class="main-card-content">
+                            <div class="card-header">
+                                <div class="card-title-section">
+                                    <div class="pokemon-name">${pokemon.species}</div>
+                                    ${pokemon.nickname ? `<div class="pokemon-nickname">"${pokemon.nickname}"</div>` : ''}
+                                </div>
+                                <div class="card-actions">
+                                    <button class="card-btn import-btn" title="Import Pokemon">📥</button>
+                                    <button class="card-btn close-btn" title="Remove Card">✕</button>
+                                </div>
+                            </div>
+                            
+                            <div class="card-info">
+                                <div class="info-left">
+                                    <div class="info-item">
+                                        <span class="info-label">Item:</span>
+                                        <span>${pokemon.item}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Ability:</span>
+                                        <span>${pokemon.ability}</span>
+                                    </div>
+                                </div>
+                                <div class="info-right">
+                                    <div class="type-badges">${typeHTML}</div>
+                                    <div class="tera-type">
+                                        <span class="info-label">Tera:</span>
+                                        <div class="type-badge" style="background: ${teraTypeColor}; display: inline-flex;">
+                                            ${teraIconData.html}
+                                            <span style="display: inline-block; vertical-align: middle;">${pokemon.teraType}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="sprite-container">
+                                ${pokemon.sprite 
+                                    ? `<img src="${pokemon.sprite}" alt="${pokemon.species}" style="width: 100%; height: 100%; object-fit: contain;">` 
+                                    : '<div class="sprite-placeholder">🎮</div>'
+                                }
+                            </div>
+                            
+                            <div class="moves-section">
+                                <div class="moves-grid">${movesHTML}</div>
+                            </div>
+                            
+                            <div class="hp-section">
+                                <div class="hp-info">
+                                    <span>HP</span>
+                                    <span>${pokemon.hp.current}/${pokemon.hp.max} (${Math.round(hpPercent)}%)</span>
+                                </div>
+                                <div class="hp-bar">
+                                    <div class="hp-fill" style="width: ${hpPercent}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            startCardDrag(e, cardElement) {
+                // Don't drag if clicking buttons or stats toggle
+                if (e.target.classList.contains('card-btn') || 
+                    e.target.closest('.stats-toggle') ||
+                    e.target.closest('.stats-content')) return;
+                
+                e.preventDefault();
+                
+                this.draggedCard = cardElement;
+                cardElement.classList.add('dragging');
+                
+                const rect = cardElement.getBoundingClientRect();
+                this.dragOffset.x = e.clientX - rect.left;
+                this.dragOffset.y = e.clientY - rect.top;
+                
+                cardElement.style.zIndex = '1001';
+                
+                setTimeout(() => {
+                    if (!cardElement.classList.contains('dragging')) {
+                        cardElement.style.zIndex = '100';
+                    }
+                }, 100);
+            }
+
+            removePokemonCard(cardId) {
+                const cardIndex = this.pokemonCards.findIndex(card => card.id === cardId);
+                if (cardIndex !== -1) {
+                    const card = this.pokemonCards[cardIndex];
+                    card.element.remove();
+                    this.pokemonCards.splice(cardIndex, 1);
+                    this.updateStatus('Pokemon card removed');
+                }
+            }
+
+            clearCanvas() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Remove all Pokemon cards
+                this.pokemonCards.forEach(card => card.element.remove());
+                this.pokemonCards = [];
+                this.cardCounter = 0;
+                
+                this.saveState();
+                this.updateStatus('Canvas and cards cleared');
+            }
+
+            saveState() {
+                this.historyStep++;
+                if (this.historyStep < this.history.length) {
+                    this.history.length = this.historyStep;
+                }
+                this.history.push(this.canvas.toDataURL());
+            }
+
+            undo() {
+                if (this.historyStep > 0) {
+                    this.historyStep--;
+                    this.restoreState();
+                    this.updateStatus('Undo');
+                }
+            }
+
+            redo() {
+                if (this.historyStep < this.history.length - 1) {
+                    this.historyStep++;
+                    this.restoreState();
+                    this.updateStatus('Redo');
+                }
+            }
+
+            restoreState() {
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, 0, 0);
+                };
+                img.src = this.history[this.historyStep];
+            }
+
+            updateStatus(message) {
+                document.getElementById('statusBar').textContent = message;
+                setTimeout(() => {
+                    document.getElementById('statusBar').textContent = 'Ready to draw';
+                }, 2000);
+            }
+        }
+
+        // Initialize the whiteboard
+        const whiteboard = new PokemonWhiteboard();
+        
+        // Make it globally accessible
+        window.whiteboard = whiteboard;
+    </script>
+</body>
+</html>
